@@ -3,7 +3,11 @@ defmodule X509.Certificate.Template do
   Certificate templates.
   """
 
-  import X509.Certificate.Extension
+  alias X509.Certificate.Extension
+
+  import Extension
+  import X509.ASN1, except: [extension: 2, basic_constraints: 2, basic_constraints: 1]
+  alias X509.Certificate
 
   defstruct serial: {:random, 8}, validity: 365, hash: :sha256, extensions: []
 
@@ -178,5 +182,76 @@ defmodule X509.Certificate.Template do
     template
     |> Map.merge(override)
     |> Map.put(:extensions, extensions)
+  end
+
+  # If the template includes the Subject Key Identifier extension, sets the
+  # value based on the given public key value
+  def update_ski(template, public_key) do
+    Map.update!(template, :extensions, fn extentions ->
+      Keyword.update(extentions, :subject_key_identifier, false, fn
+        true -> Extension.subject_key_identifier(public_key)
+        false -> false
+      end)
+    end)
+  end
+
+  # If the template includes the Authority Key Identifier extension, sets the
+  # value based on the issuer's SKI value (for plain certificate)
+  def update_aki(template, certificate() = issuer) do
+    aki =
+      case Certificate.extension(issuer, oid(:"id-ce-subjectKeyIdentifier")) do
+        nil ->
+          nil
+
+        plain_ski ->
+          # FIXME: avoid calls to undocumented functions in :public_key app
+          plain_ski
+          |> :pubkey_cert_records.transform(:decode)
+          |> X509.ASN1.extension(:extnValue)
+      end
+
+    update_aki(template, aki)
+  end
+
+  # If the template includes the Authority Key Identifier extension, sets the
+  # value based on the issuer's SKI value (for OTP certificate)
+  def update_aki(template, otp_certificate() = issuer) do
+    aki =
+      case Certificate.extension(issuer, oid(:"id-ce-subjectKeyIdentifier")) do
+        nil -> nil
+        extension(extnValue: id) -> id
+      end
+
+    update_aki(template, aki)
+  end
+
+  # If the template includes the Authority Key Identifier extension, sets it to
+  # the specified binary value
+  def update_aki(template, aki) when is_binary(aki) do
+    Map.update!(template, :extensions, fn extensions ->
+      Keyword.update(extensions, :authority_key_identifier, false, fn
+        true -> Extension.authority_key_identifier(aki)
+        false -> false
+      end)
+    end)
+  end
+
+  # No Authority Key Identifier value is available; disables the extension in
+  # the template
+  def update_aki(template, nil) do
+    Map.update!(template, :extensions, fn extensions ->
+      Keyword.put(extensions, :authority_key_identifier, false)
+    end)
+  end
+
+  # If the template includes the Authority Key Identifier extension, sets the
+  # value based on the given public key value
+  def update_aki(template, public_key) do
+    Map.update!(template, :extensions, fn extensions ->
+      Keyword.update(extensions, :authority_key_identifier, false, fn
+        true -> Extension.authority_key_identifier(public_key)
+        false -> false
+      end)
+    end)
   end
 end
