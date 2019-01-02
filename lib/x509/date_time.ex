@@ -11,16 +11,10 @@ defmodule X509.DateTime do
     DateTime.utc_now() |> shift(seconds) |> new()
   end
 
-  def new(%DateTime{year: year} = datetime) when year < 2050 do
+  def new(%DateTime{} = datetime) do
     iso = DateTime.to_iso8601(datetime, :basic)
     [_, date, time] = Regex.run(~r/^\d\d(\d{6})T(\d{6})(?:\.\d+)?Z$/, iso)
     {:utcTime, '#{date}#{time}Z'}
-  end
-
-  def new(datetime) do
-    iso = DateTime.to_iso8601(datetime, :basic)
-    [_, date, time] = Regex.run(~r/^(\d{8})T(\d{6})(?:\.\d+)?Z$/, iso)
-    {:generalizedTime, '#{date}#{time}Z'}
   end
 
   def to_datetime({:utcTime, time}) do
